@@ -1,103 +1,177 @@
-import Image from "next/image";
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { Search, BarChart, Package } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { TrustScore } from '@/components/TrustScore'
+import Link from 'next/link'
+
+type SearchResult = {
+  id: number
+  brand_name: string
+  full_name: string
+  image_url: string | null
+  product_url: string | null
+  trust_score: number
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [searchTerm, setSearchTerm] = useState('')
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [loading, setLoading] = useState(false)
+  const [queryTime, setQueryTime] = useState<number | null>(null)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const searchProducts = useCallback(async (term: string) => {
+    if (term.length < 2) {
+      setResults([])
+      return
+    }
+
+    setLoading(true)
+    const startTime = performance.now()
+
+    try {
+      const { data, error } = await supabase
+        .from('labels')
+        .select(`
+          id,
+          brand_name,
+          full_name,
+          products!inner(image_url, product_url),
+          verification(
+            usp_verified,
+            informed_sport,
+            informed_choice,
+            nsf_certified,
+            fda_flagged,
+            bscg,
+            ifos
+          )
+        `)
+        .ilike('search_text', `%${term}%`)
+        .limit(20)
+
+      if (error) throw error
+
+      const results = (data || []).map((item: any) => {
+        const certs = item.verification?.[0] || {}
+        const certCount = [
+          certs.usp_verified,
+          certs.informed_sport,
+          certs.informed_choice,
+          certs.nsf_certified,
+          certs.bscg,
+          certs.ifos
+        ].filter(Boolean).length
+
+        const trustScore = Math.min(100, Math.max(0, 
+          50 + (certCount * 10) - (certs.fda_flagged ? 50 : 0)
+        ))
+
+        return {
+          id: item.id,
+          brand_name: item.brand_name,
+          full_name: item.full_name,
+          image_url: item.products?.[0]?.image_url,
+          product_url: item.products?.[0]?.product_url,
+          trust_score: trustScore
+        }
+      })
+
+      setResults(results)
+      setQueryTime(performance.now() - startTime)
+    } catch (error) {
+      console.error('Search error:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const delayDebounce = setTimeout(() => {
+      searchProducts(searchTerm)
+    }, 300)
+
+    return () => clearTimeout(delayDebounce)
+  }, [searchTerm, searchProducts])
+
+  return (
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Slips Demo</h1>
+          <p className="text-gray-600">Test database performance and search functionality</p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+
+        <div className="flex gap-4 justify-center mb-8">
+          <Link href="/scan" className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+            <Package size={20} />
+            Barcode Scanner
+          </Link>
+          <Link href="/metrics" className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
+            <BarChart size={20} />
+            Performance Metrics
+          </Link>
+        </div>
+
+        <div className="relative max-w-2xl mx-auto mb-4">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder="Search supplements by brand or product name..."
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+        </div>
+
+        {queryTime !== null && (
+          <div className="text-center text-sm text-gray-500 mb-4">
+            Query time: {queryTime.toFixed(2)}ms
+          </div>
+        )}
+
+        {loading && (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          </div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {results.map((product) => (
+            <Link
+              key={product.id}
+              href={`/product/${product.id}`}
+              className="bg-white rounded-lg shadow-md p-4 hover:shadow-lg transition-shadow"
+            >
+              <div className="flex gap-4">
+                {product.image_url ? (
+                  <img
+                    src={product.image_url}
+                    alt={product.full_name}
+                    className="w-20 h-20 object-contain"
+                  />
+                ) : (
+                  <div className="w-20 h-20 bg-gray-200 rounded flex items-center justify-center">
+                    <Package className="text-gray-400" size={32} />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900">{product.brand_name}</h3>
+                  <p className="text-sm text-gray-600 mb-2">{product.full_name}</p>
+                  <TrustScore score={product.trust_score} size="sm" />
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {searchTerm && !loading && results.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            No products found for "{searchTerm}"
+          </div>
+        )}
+      </div>
+    </main>
+  )
 }
