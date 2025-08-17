@@ -31,57 +31,82 @@ export default function Home() {
     const startTime = performance.now()
 
     try {
-      const { data, error } = await supabase
+      // First get the labels
+      const { data: labels, error: labelsError } = await supabase
         .from('labels')
-        .select(`
-          id,
-          brand_name,
-          full_name,
-          products(image_url, product_url),
-          verification(
-            usp_verified,
-            informed_sport,
-            informed_choice,
-            nsf_certified,
-            fda_flagged,
-            bscg,
-            ifos
-          )
-        `)
+        .select('id, brand_name, full_name')
         .ilike('search_text', `%${term}%`)
         .limit(20)
 
-      if (error) throw error
+      if (labelsError) {
+        console.error('Search error:', labelsError)
+        setResults([])
+        setQueryTime(performance.now() - startTime)
+        return
+      }
 
-      const results = (data || []).map((item: any) => {
-        const certs = item.verification?.[0] || {}
-        const certCount = [
-          certs.usp_verified,
-          certs.informed_sport,
-          certs.informed_choice,
-          certs.nsf_certified,
-          certs.bscg,
-          certs.ifos
-        ].filter(Boolean).length
+      if (!labels || labels.length === 0) {
+        setResults([])
+        setQueryTime(performance.now() - startTime)
+        return
+      }
+
+      const labelIds = labels.map(l => l.id)
+
+      // Get products for these labels
+      const { data: products } = await supabase
+        .from('products')
+        .select('dsld_label_id, image_url, product_url')
+        .in('dsld_label_id', labelIds)
+
+      // Get verifications for these labels
+      const { data: verifications } = await supabase
+        .from('verification')
+        .select(`
+          product_id,
+          usp_verified,
+          informed_sport,
+          informed_choice,
+          nsf_certified,
+          fda_flagged,
+          bscg,
+          ifos
+        `)
+        .in('product_id', labelIds)
+
+      // Combine the data
+      const results = labels.map((label) => {
+        const product = products?.find(p => p.dsld_label_id === label.id)
+        const verification = verifications?.find(v => v.product_id === label.id)
+
+        const certCount = verification ? [
+          verification.usp_verified,
+          verification.informed_sport,
+          verification.informed_choice,
+          verification.nsf_certified,
+          verification.bscg,
+          verification.ifos
+        ].filter(Boolean).length : 0
 
         const trustScore = Math.min(100, Math.max(0, 
-          50 + (certCount * 10) - (certs.fda_flagged ? 50 : 0)
+          50 + (certCount * 10) - (verification?.fda_flagged ? 50 : 0)
         ))
 
         return {
-          id: item.id,
-          brand_name: item.brand_name,
-          full_name: item.full_name,
-          image_url: item.products?.[0]?.image_url,
-          product_url: item.products?.[0]?.product_url,
+          id: label.id,
+          brand_name: label.brand_name,
+          full_name: label.full_name,
+          image_url: product?.image_url || null,
+          product_url: product?.product_url || null,
           trust_score: trustScore
         }
       })
 
       setResults(results)
       setQueryTime(performance.now() - startTime)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Search error:', error)
+      setResults([])
     } finally {
       setLoading(false)
     }
@@ -119,7 +144,7 @@ export default function Home() {
           <input
             type="text"
             placeholder="Search supplements by brand or product name..."
-            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-3 text-gray-900 bg-white border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none text-base"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />

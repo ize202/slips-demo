@@ -37,47 +37,33 @@ export default function ProductPage() {
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const { data, error } = await supabase
+        // Get label details
+        const { data: label, error: labelError } = await supabase
           .from('labels')
-          .select(`
-            id,
-            brand_name,
-            full_name,
-            upc,
-            product_type,
-            entry_date,
-            off_market,
-            products(image_url, product_url),
-            verification(
-              usp_verified,
-              informed_sport,
-              informed_choice,
-              nsf_certified,
-              fda_flagged,
-              bscg,
-              ifos,
-              ikos,
-              iaos,
-              ipro,
-              igen,
-              clean_label_project_certified,
-              non_gmo_certified,
-              gf_certified,
-              usda_organic_certified,
-              vegan_action_certified,
-              fda_recall_number,
-              fda_recall_url
-            )
-          `)
+          .select('*')
           .eq('id', params.id)
           .single()
 
-        if (error || !data) {
+        if (labelError || !label) {
           setError('Product not found')
           return
         }
 
-        const certs = data.verification?.[0] || {}
+        // Get product details
+        const { data: productData } = await supabase
+          .from('products')
+          .select('image_url, product_url')
+          .eq('dsld_label_id', label.id)
+          .single()
+
+        // Get verification details
+        const { data: verification } = await supabase
+          .from('verification')
+          .select('*')
+          .eq('product_id', label.id)
+          .single()
+
+        const certs = verification || {}
         
         const certifications = [
           { name: 'USP Verified', value: certs.usp_verified },
@@ -107,19 +93,19 @@ export default function ProductPage() {
         ].filter(Boolean).length
 
         const trustScore = Math.min(100, Math.max(0, 
-          50 + (certCount * 10) - (certs.fda_flagged ? 50 : 0) - (data.off_market === 1 ? 15 : 0)
+          50 + (certCount * 10) - (certs.fda_flagged ? 50 : 0) - (label.off_market === 1 ? 15 : 0)
         ))
 
         setProduct({
-          id: data.id,
-          brand_name: data.brand_name,
-          full_name: data.full_name,
-          upc: data.upc,
-          product_type: data.product_type,
-          entry_date: data.entry_date,
-          off_market: data.off_market,
-          image_url: data.products?.[0]?.image_url,
-          product_url: data.products?.[0]?.product_url,
+          id: label.id,
+          brand_name: label.brand_name,
+          full_name: label.full_name,
+          upc: label.upc,
+          product_type: label.product_type,
+          entry_date: label.entry_date,
+          off_market: label.off_market,
+          image_url: productData?.image_url || null,
+          product_url: productData?.product_url || null,
           trust_score: trustScore,
           certifications,
           fda_recall: certs.fda_recall_number ? {
