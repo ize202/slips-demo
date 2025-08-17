@@ -40,7 +40,7 @@ export default function ScanPage() {
         .from('product_variants')
         .select(`
           gtin,
-          products!inner(
+          products(
             dsld_label_id,
             image_url,
             product_url,

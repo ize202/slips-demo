@@ -37,7 +37,7 @@ export default function Home() {
           id,
           brand_name,
           full_name,
-          products!inner(image_url, product_url),
+          products(image_url, product_url),
           verification(
             usp_verified,
             informed_sport,

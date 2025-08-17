@@ -47,7 +47,7 @@ export default function ProductPage() {
             product_type,
             entry_date,
             off_market,
-            products!inner(image_url, product_url),
+            products(image_url, product_url),
             verification(
               usp_verified,
               informed_sport,
