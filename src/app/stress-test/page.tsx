@@ -62,24 +62,15 @@ export default function StressTest() {
       return { score: data }
     }))
 
-    // Test 4: Search with materialized view
-    testResults.push(await runTest('Search Mat View (vitamin)', async () => {
+    // Test 4: Search with optimized function
+    testResults.push(await runTest('Optimized Search (vitamin c)', async () => {
       const { data, error } = await supabase
-        .rpc('search_products', { 
-          query_text: 'vitamin',
+        .rpc('search_supplements', { 
+          query: 'vitamin c',
           limit_count: 20 
         })
-      if (error) {
-        // Fallback to regular search if mat view doesn't exist
-        const { data: fallback, error: fallbackError } = await supabase
-          .from('labels')
-          .select('id, brand_name, full_name')
-          .ilike('full_name', '%vitamin%')
-          .limit(20)
-        if (fallbackError) throw fallbackError
-        return { results: fallback?.length || 0, type: 'fallback' }
-      }
-      return { results: data?.length || 0, type: 'materialized' }
+      if (error) throw error
+      return { results: data?.length || 0, type: 'optimized' }
     }))
 
     // Test 5: Complex join query
